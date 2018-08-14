@@ -17,105 +17,46 @@ def ask_which_show(shows):
         show_index += 1
 
     show_to_get = int(input(f'Select a show: [0-{show_index-1}]: '))
-    return shows[show_to_get]['title']
+    return shows[show_to_get]['cove_slug']
 
 def check_available_episodes(show_title):
-    return requests.get(
-        'https://pbskids.org/pbsk/video/api/getVideos',
-        params={
-            'startindex': 1,
-            'endindex': 45,
-            'program': show_title,
-            'status': 'available',
-            'hls': 'true',
-            'destination': 'producer',
-            'type': 'Episode',
-        }
-    ).json()['items']
+	url = 'https://cms-tc.pbskids.org/pbskidsvideoplaylists/' + show_title + '.json'
+	return requests.get(url).json()['collections']['episodes']['content']
 
 def ask_which_episode(available_episodes):
-    print('Available Episodes:\n===================')
+    print('Available Episodes for {}:\n==================='.format(
+        available_episodes[0]['program']['title']))
     index = 0
     for item in available_episodes:
-        item['videos'] = item['videos']['hls']
         print(f'[{index}]: {item["title"]} - {item["description"]}\n')
         index += 1
 
     return int(input(f'Which episode do you want? [0-{index-1}]: '))
 
-def ask_which_resolution():
-    resolution_mapping = ['hls-2500k', 'hls-1080p']  # 720, 1080
-    print('Available Resolutions:\n=====================:\n[0]: 720p\n[1]: 1080p')
-    resolution_index = int(input('Which Resolution? [0-1]: '))
-    return resolution_mapping[resolution_index]
+def get_video_info(video):
+    info = {}
+    info['mp4'] = video['mp4']
+    info['show_title'] = video['program']['title']
+    info['episode_number'] = video['nola_episode']
+    info['episode_title'] = video['title']
+    if(info['episode_number'].isdigit()):
+        if len(info['episode_number']) == 3:
+            info['episode_number'] = "S{}E{}".format(
+                int(info['episode_number'][0]), int(info['episode_number'][1:]))
+        elif len(info['episode_number']) == 4:
+            info['episode_number'] = "S{}E{}".format(
+                int(info['episode_number'][0:1]), int(info['episode_number'][2:]))
+    info['file_name'] = '{} - {} - {}.mp4'.format(
+        info['show_title'], info['episode_number'], info['episode_title']).replace('/', ' & ')
+    return info
 
-
-def get_video_url(available_episodes, index_to_get, resolution):
-    for key, values in available_episodes[index_to_get]['videos'].items():
-        if key.startswith(resolution):
-            return values['url']
-
-def get_path_and_filename(video_url):
-    r = requests.get(video_url, allow_redirects=False)
-    location = r.headers['Location']
-    manifest = requests.get(location).content.decode('utf-8')
-    match_1080 = re.findall(
-        '#EXT-X-STREAM.*RESOLUTION=(?P<resolution>1920x1080|1440x1080),.*\n(?P<filename>.*)\n',
-        manifest
-    )
-    match_720 = re.findall(
-        '#EXT-X-STREAM.*RESOLUTION=(?P<resolution>1280x720|960x720),.*\n(?P<filename>.*)\n',
-        manifest
-    )
-    match = match_1080 or match_720
-    filename = match[0][1]
-    path = dirname(location)
-    return path, filename
-
-def get_output_filename(filename, show_title, episode_title, resolution):
-    print(f'playlist: {filename}')
-    patterns = (
-        r'\w+[a-zA-Z](?P<season>\d{1,2})(?P<episode>\d{2})[-_]ep',
-        r'\w+[_-]ep(?P<season>\d{1,2})(?P<episode>\d{2})[-_]',
-        r'\w+[a-zA-Z](?P<season>\d{1,2})(?P<episode>\d{2})\w+[-_]ep',
-        r'\w+[a-zA-Z](?P<season>\d{1,2})(?P<episode>\d{2})[-_].*m1080',
-        r'\w+[a-zA-Z](?P<season>\d{1,2})(?P<episode>\d{2}).*h264[-_]\d+x\d+',
-        r'\w+[a-zA-Z](?P<season>\d{1,2})(?P<episode>\d{2})[-_].*\d+x\d+',
-    )
-
-    for pattern in patterns:
-        match = re.match(pattern, filename)
-        if match:
-            break
-
-    # Prompt for season and episode to make sure it fits?
-    season, episode = match.groups()
-    season = season.zfill(2)
-    output = f'{show_title} - S{season}E{episode} - {episode_title} - {resolution}.ts'
-    output = output.replace('/', ' ')
-
-    return output
-
-def get_video_playlist_files(path, filename):
-    playlist = requests.get(f'{path}/{filename}').content.decode('utf-8')
-    return list(re.finditer('(?P<filename>.*\.ts)', playlist))
-
-def create_output_file(playlist_files, output):
-    print(f'Writing to: {output}')
+def create_output_file(video_info):
+    print(f"Writing to: {video_info['file_name']}")
     files = 1
-    with open(output, 'wb') as f:
-        for pfile in playlist_files:
-            filename = pfile.groupdict()['filename']
-            percentage = (files/len(playlist_files))*100
-            print(
-                f'[{percentage:.0f}%] {files}/{len(playlist_files)}: {filename}',
-                end="\r",
-                flush=True
-            )
-            bit = requests.get(f'{path}/{filename}')
-            f.write(bit.content)
-            files += 1
-
+    with open(video_info['file_name'], 'wb') as f:
+        bit = requests.get(video_info['mp4'])
+        f.write(bit.content)
+        files += 1
         print('\nComplete!')
 
 if __name__ == '__main__':
@@ -126,14 +67,5 @@ if __name__ == '__main__':
         sys.exit(f'No episodes available for series: "{show_title}". Try another show next time.')
     system('clear')
     index_to_get = ask_which_episode(available_episodes)
-    episode_title = available_episodes[index_to_get]['title']
-    system('clear')
-    resolution = ask_which_resolution()
-    video_url = get_video_url(available_episodes, index_to_get, resolution)
-    path, filename = get_path_and_filename(video_url)
-    resolution_mapping = {'hls-2500k': '720p', 'hls-1080p': '1080p'}
-    output = get_output_filename(
-        filename, show_title, episode_title, resolution_mapping[resolution]
-    )
-    playlist_files = get_video_playlist_files(path, filename)
-    create_output_file(playlist_files, output)
+    video_info = get_video_info(available_episodes[index_to_get])
+    create_output_file(video_info)
