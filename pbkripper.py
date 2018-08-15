@@ -4,6 +4,10 @@ import requests
 import re
 from os.path import dirname
 from os import system
+import os
+
+download_subtitles = False # Set this to True if you want to download closed caption files as well
+subtitle_type = "SRT" # Choose between Caption-SAMI, DFXP, SRT, and WebVTT
 
 def get_shows():
     return requests.get(
@@ -33,7 +37,7 @@ def ask_which_episode(available_episodes):
 
     return int(input(f'Which episode do you want? [0-{index-1}]: '))
 
-def get_video_info(video):
+def get_video_info(video, subtitles=False):
     info = {}
     info['mp4'] = video['mp4']
     info['show_title'] = video['program']['title']
@@ -48,17 +52,35 @@ def get_video_info(video):
                 int(info['episode_number'][0:1]), int(info['episode_number'][2:]))
     info['file_name'] = '{} - {} - {}.mp4'.format(
         info['show_title'], info['episode_number'], info['episode_title']).replace('/', ' & ')
+    
+    if( subtitles is not False):
+        for item in video['closedCaptions']:
+            if ( item['format'].lower() == subtitle_type.lower() ):
+                info['subtitle_url'] = item['URI']
+                #print(item['URI'])
+
+        #print( video['closedCaptions'] )
     return info
 
 def create_output_file(video_info):
     print(f"Writing to: {video_info['file_name']}")
-    files = 1
     with open(video_info['file_name'], 'wb') as f:
         bit = requests.get(video_info['mp4'])
         f.write(bit.content)
-        files += 1
         print('\nComplete!')
-
+    
+    if( 'subtitle_url' in video_info ):
+        print("I will download subtitle file now.")
+        file_extension = video_info['subtitle_url'].split(".")[-1:]
+        file_extension = ''.join(file_extension)
+        mp4_filename = os.path.basename(video_info['file_name'])
+        subtitle_filename = str(os.path.splitext(mp4_filename)[0]) + "."+ file_extension
+        print(f"Writing to: {subtitle_filename}")
+        with open(subtitle_filename, 'wb') as s:
+            bit = requests.get(video_info['subtitle_url'])
+            s.write(bit.content)
+            print('\nComplete!')
+    
 if __name__ == '__main__':
     shows = get_shows()
     show_title = ask_which_show(shows)
@@ -67,5 +89,5 @@ if __name__ == '__main__':
         sys.exit(f'No episodes available for series: "{show_title}". Try another show next time.')
     system('clear')
     index_to_get = ask_which_episode(available_episodes)
-    video_info = get_video_info(available_episodes[index_to_get])
+    video_info = get_video_info(available_episodes[index_to_get], download_subtitles)
     create_output_file(video_info)
