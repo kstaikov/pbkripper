@@ -6,8 +6,9 @@ from os.path import dirname
 from os import system
 import os
 
-download_subtitles = False # Set this to True if you want to download closed caption files as well
-subtitle_type = "SRT" # Choose between Caption-SAMI, DFXP, SRT, and WebVTT
+DOWNLOAD_ROOT = "./Shows" # Set this to the path where you want videos saved to
+DOWNLOAD_SUBTITLES = False # Set this to True if you want to download closed caption files as well
+SUBTITLE_TYPE = "SRT" # Choose between Caption-SAMI, DFXP, SRT, and WebVTT
 
 def get_shows():
     return requests.get(
@@ -40,46 +41,48 @@ def ask_which_episode(available_episodes):
 def get_video_info(video, subtitles=False):
     info = {}
     info['mp4'] = video['mp4']
-    info['show_title'] = video['program']['title']
-    info['episode_number'] = video['nola_episode']
+    info['show_title'] = video['program']['title'].strip()
+    info['episode_number'] = video['nola_episode'] # A lot of episodes seem to not include a real number, so most of the time this is just an abbreviation of the show title
     info['episode_title'] = video['title']
     if(info['episode_number'].isdigit()):
-        if len(info['episode_number']) == 3:
+        if len(info['episode_number']) == 3: # If episode number is like 301, split so it becomes S3E01
             info['episode_number'] = "S{}E{}".format(
                 int(info['episode_number'][0]), int(info['episode_number'][1:]))
-        elif len(info['episode_number']) == 4:
+        elif len(info['episode_number']) == 4: # If episode number is 1210, split so it becomes S12E10
             info['episode_number'] = "S{}E{}".format(
                 int(info['episode_number'][0:1]), int(info['episode_number'][2:]))
-    info['file_name'] = '{} - {} - {}.mp4'.format(
-        info['show_title'], info['episode_number'], info['episode_title']).replace('/', ' & ')
-    
+    info['base_file_name'] = '{} - {} - {}'.format(
+        info['show_title'], info['episode_number'], info['episode_title']).replace('/', ' and ')
+    info['video_file'] = os.path.join(DOWNLOAD_ROOT, info['show_title'], info['base_file_name'])
+
     if( subtitles is not False):
         for item in video['closedCaptions']:
-            if ( item['format'].lower() == subtitle_type.lower() ):
+            if ( item['format'].lower() == SUBTITLE_TYPE.lower() ):
                 info['subtitle_url'] = item['URI']
-                #print(item['URI'])
 
-        #print( video['closedCaptions'] )
     return info
 
 def create_output_file(video_info):
-    print(f"Writing to: {video_info['file_name']}")
-    with open(video_info['file_name'], 'wb') as f:
-        bit = requests.get(video_info['mp4'])
-        f.write(bit.content)
-        print('\nComplete!')
+    video_dir = os.path.dirname(video_info['video_file']+".mp4")
+    os.makedirs(video_dir, exist_ok=True)
+    mp4_file = video_info['video_file']+".mp4"
+    if not os.path.exists(mp4_file):
+        print(f"Writing to: {mp4_file}.")
+        with open(mp4_file, 'wb') as f:
+            bit = requests.get(video_info['mp4'])
+            f.write(bit.content)
+            print('\nComplete!')
     
     if( 'subtitle_url' in video_info ):
-        print("I will download subtitle file now.")
-        file_extension = video_info['subtitle_url'].split(".")[-1:]
-        file_extension = ''.join(file_extension)
-        mp4_filename = os.path.basename(video_info['file_name'])
-        subtitle_filename = str(os.path.splitext(mp4_filename)[0]) + "."+ file_extension
-        print(f"Writing to: {subtitle_filename}")
-        with open(subtitle_filename, 'wb') as s:
-            bit = requests.get(video_info['subtitle_url'])
-            s.write(bit.content)
-            print('\nComplete!')
+        subtitle_extension = video_info['subtitle_url'].split(".")[-1:]
+        subtitle_extension = ''.join(subtitle_extension)
+        subtitle_filename = video_info['video_file']+"."+subtitle_extension
+        if not os.path.exists(subtitle_filename):
+            print(f"Writing to: {subtitle_filename}.")
+            with open(subtitle_filename, 'wb') as s:
+                bit = requests.get(video_info['subtitle_url'])
+                s.write(bit.content)
+                print('\nComplete!')
     
 if __name__ == '__main__':
     shows = get_shows()
@@ -89,11 +92,11 @@ if __name__ == '__main__':
         sys.exit(f'No episodes available for series: "{show_title}". Try another show next time.')
     system('clear')
     index_to_get = ask_which_episode(available_episodes)
-    if(index_to_get.upper() == "A"):
-        for item in available_episodes: # Download all episodes of selected show.
-            video_info = get_video_info(item, download_subtitles)
+    if(index_to_get.upper() == "A"): # Download all episodes of selected show
+        for item in available_episodes: 
+            video_info = get_video_info(item, DOWNLOAD_SUBTITLES)
             create_output_file(video_info)
-    else:
+    else: # Download only selected episode
         index_to_get = int(index_to_get)
-    video_info = get_video_info(available_episodes[index_to_get], download_subtitles)
-    create_output_file(video_info)
+        video_info = get_video_info(available_episodes[index_to_get], DOWNLOAD_SUBTITLES)
+        create_output_file(video_info)
