@@ -35,7 +35,7 @@ def ask_which_episode(available_episodes):
         print(f'[{index}]: {item["title"]} - {item["description"]}\n')
         index += 1
 
-    return int(input(f'Which episode do you want? [0-{index-1}]: '))
+    return input(f'Which episode do you want? [0-{index-1}], A=All: ')
 
 def get_video_info(video, subtitles=False):
     info = {}
@@ -89,5 +89,11 @@ if __name__ == '__main__':
         sys.exit(f'No episodes available for series: "{show_title}". Try another show next time.')
     system('clear')
     index_to_get = ask_which_episode(available_episodes)
+    if(index_to_get.upper() == "A"):
+        for item in available_episodes: # Download all episodes of selected show.
+            video_info = get_video_info(item, download_subtitles)
+            create_output_file(video_info)
+    else:
+        index_to_get = int(index_to_get)
     video_info = get_video_info(available_episodes[index_to_get], download_subtitles)
     create_output_file(video_info)
