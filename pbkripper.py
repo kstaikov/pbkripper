@@ -5,10 +5,14 @@ import re
 from os.path import dirname
 from os import system
 import os
+import json
 
-DOWNLOAD_ROOT = "./Shows" # Set this to the path where you want videos saved to
-DOWNLOAD_SUBTITLES = False # Set this to True if you want to download closed caption files as well
-SUBTITLE_TYPE = "SRT" # Choose between Caption-SAMI, DFXP, SRT, and WebVTT
+with open('config.json', 'r') as f:
+    config = json.load(f)
+
+#DOWNLOAD_ROOT = "/Volumes/4TB/TV/Kids/" # Set this to the path where you want videos saved to
+#DOWNLOAD_SUBTITLES = False # Set this to True if you want to download closed caption files as well
+#SUBTITLE_TYPE = "SRT" # Choose between Caption-SAMI, DFXP, SRT, and WebVTT
 
 def get_shows():
     return requests.get(
@@ -53,11 +57,11 @@ def get_video_info(video, subtitles=False):
                 int(info['episode_number'][0:1]), int(info['episode_number'][2:]))
     info['base_file_name'] = '{} - {} - {}'.format(
         info['show_title'], info['episode_number'], info['episode_title']).replace('/', ' and ')
-    info['video_file'] = os.path.join(DOWNLOAD_ROOT, info['show_title'], info['base_file_name'])
+    info['video_file'] = os.path.join(config['DOWNLOAD_ROOT'], info['show_title'], info['base_file_name'])
 
     if( subtitles is not False):
         for item in video['closedCaptions']:
-            if ( item['format'].lower() == SUBTITLE_TYPE.lower() ):
+            if ( item['format'].lower() == config['SUBTITLE_TYPE'].lower() ):
                 info['subtitle_url'] = item['URI']
 
     return info
@@ -94,9 +98,9 @@ if __name__ == '__main__':
     index_to_get = ask_which_episode(available_episodes)
     if(index_to_get.upper() == "A"): # Download all episodes of selected show
         for item in available_episodes: 
-            video_info = get_video_info(item, DOWNLOAD_SUBTITLES)
+            video_info = get_video_info(item, config['DOWNLOAD_SUBTITLES'])
             create_output_file(video_info)
     else: # Download only selected episode
         index_to_get = int(index_to_get)
-        video_info = get_video_info(available_episodes[index_to_get], DOWNLOAD_SUBTITLES)
+        video_info = get_video_info(available_episodes[index_to_get], config['DOWNLOAD_SUBTITLES'])
         create_output_file(video_info)
