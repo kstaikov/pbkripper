@@ -1,5 +1,6 @@
 {
 "DOWNLOAD_ROOT": "/Volumes/4TB/TV/Kids/",
 "DOWNLOAD_SUBTITLES": false,
-"SUBTITLE_TYPE": "SRT"
+"SUBTITLE_TYPE": "SRT",
+"LOG_FILE": ".downloads.log"
 }

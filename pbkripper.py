@@ -6,13 +6,15 @@ from os.path import dirname
 from os import system
 import os
 import json
+import logging
+from tqdm import tqdm
+import math
 
 with open('config.json', 'r') as f:
     config = json.load(f)
 
-#DOWNLOAD_ROOT = "/Volumes/4TB/TV/Kids/" # Set this to the path where you want videos saved to
-#DOWNLOAD_SUBTITLES = False # Set this to True if you want to download closed caption files as well
-#SUBTITLE_TYPE = "SRT" # Choose between Caption-SAMI, DFXP, SRT, and WebVTT
+FORMAT = '%(asctime)-15s %(slug)s %(message)s "%(videofile)s"'
+logging.basicConfig(filename=config['LOG_FILE'], level=logging.INFO, format=FORMAT)
 
 def get_shows():
     return requests.get(
@@ -42,9 +44,11 @@ def ask_which_episode(available_episodes):
 
     return input(f'Which episode do you want? [0-{index-1}], A=All: ')
 
-def get_video_info(video, subtitles=False):
+def get_video_info(video, subtitles="False"):
     info = {}
     info['mp4'] = video['mp4']
+    info['id'] = video['id']
+    info['slug'] = video['program']['slug']
     info['show_title'] = video['program']['title'].strip()
     info['episode_number'] = video['nola_episode'] # A lot of episodes seem to not include a real number, so most of the time this is just an abbreviation of the show title
     info['episode_title'] = video['title']
@@ -70,24 +74,53 @@ def create_output_file(video_info):
     video_dir = os.path.dirname(video_info['video_file']+".mp4")
     os.makedirs(video_dir, exist_ok=True)
     mp4_file = video_info['video_file']+".mp4"
-    if not os.path.exists(mp4_file):
-        print(f"Writing to: {mp4_file}.")
-        with open(mp4_file, 'wb') as f:
-            bit = requests.get(video_info['mp4'])
-            f.write(bit.content)
-            print('\nComplete!')
-    
-    if( 'subtitle_url' in video_info ):
-        subtitle_extension = video_info['subtitle_url'].split(".")[-1:]
-        subtitle_extension = ''.join(subtitle_extension)
-        subtitle_filename = video_info['video_file']+"."+subtitle_extension
-        if not os.path.exists(subtitle_filename):
-            print(f"Writing to: {subtitle_filename}.")
-            with open(subtitle_filename, 'wb') as s:
-                bit = requests.get(video_info['subtitle_url'])
-                s.write(bit.content)
-                print('\nComplete!')
-    
+    download_status = check_for_existing_download(video_info)
+    if download_status == False:
+        if os.path.exists(mp4_file):
+          print("path exists. not downloading.")
+          d = {'slug': video_info['slug'], 'videofile': mp4_file}
+          logging.info(video_info['id'], extra = d)
+        else:
+            print(f"Writing to: {mp4_file}.")
+            bit = requests.get(video_info['mp4'], stream=True)
+            total_size = int(bit.headers.get('content-length', 0)); 
+            block_size = 1024
+            wrote = 0 
+            with open(mp4_file, 'wb') as f:
+                #bit = requests.get(video_info['mp4'])
+                for data in tqdm(bit.iter_content(block_size), total=math.ceil(total_size//block_size) , unit='KB', unit_scale=True):
+                  wrote = wrote  + len(data)
+                  f.write(data)
+                #print('\nComplete!')
+                d = {'slug': video_info['slug'], 'videofile': mp4_file}
+                logging.info(video_info['id'], extra = d)
+            if total_size != 0 and wrote != total_size:
+                print("ERROR, something went wrong")  
+        
+        if( 'subtitle_url' in video_info ):
+            subtitle_extension = video_info['subtitle_url'].split(".")[-1:]
+            subtitle_extension = ''.join(subtitle_extension)
+            subtitle_filename = video_info['video_file']+"."+subtitle_extension
+            if not os.path.exists(subtitle_filename):
+                print(f"Writing to: {subtitle_filename}.")
+                with open(subtitle_filename, 'wb') as s:
+                    bit = requests.get(video_info['subtitle_url'])
+                    s.write(bit.content)
+                    print('\nComplete!')
+
+def check_for_existing_download(video_info):
+    id = video_info['id']
+    with open('.downloads.log') as f:
+        line = next((l for l in f if id in l), None)
+        if line is not None:
+            download = input(f'Log file indicates this file was already downloaded. Continue? y/n: ')
+            if download == "y":
+                return False
+            else:
+                return True
+        else:
+          return False
+
 if __name__ == '__main__':
     shows = get_shows()
     show_title = ask_which_show(shows)
