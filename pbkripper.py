@@ -9,12 +9,24 @@ import json
 import logging
 from tqdm import tqdm
 import math
+import requests_cache
 
 with open('config.json', 'r') as f:
     config = json.load(f)
 
 FORMAT = '%(asctime)-15s %(slug)s %(message)s "%(videofile)s"'
 logging.basicConfig(filename=config['LOG_FILE'], level=logging.INFO, format=FORMAT)
+requests_cache.install_cache('pbs_cache', backend='sqlite', expire_after=300)
+
+if config['VERBOSE']:
+    def verboseprint(*args):
+        # Print each argument separately so caller doesn't need to
+        # stuff everything to be printed into a single string
+        for arg in args:
+           print(arg),
+        print
+else:
+    verboseprint = lambda *a: None
 
 def get_shows():
     return requests.get(
@@ -71,42 +83,43 @@ def get_video_info(video, subtitles="False"):
     return info
 
 def create_output_file(video_info):
-    video_dir = os.path.dirname(video_info['video_file']+".mp4")
-    os.makedirs(video_dir, exist_ok=True)
-    mp4_file = video_info['video_file']+".mp4"
-    download_status = check_for_existing_download(video_info)
-    if download_status == False:
-        if os.path.exists(mp4_file):
-          print("path exists. not downloading.")
-          d = {'slug': video_info['slug'], 'videofile': mp4_file}
-          logging.info(video_info['id'], extra = d)
-        else:
-            print(f"Writing to: {mp4_file}.")
-            bit = requests.get(video_info['mp4'], stream=True)
-            total_size = int(bit.headers.get('content-length', 0)); 
-            block_size = 1024
-            wrote = 0 
-            with open(mp4_file, 'wb') as f:
-                #bit = requests.get(video_info['mp4'])
-                for data in tqdm(bit.iter_content(block_size), total=math.ceil(total_size//block_size) , unit='KB', unit_scale=True):
-                  wrote = wrote  + len(data)
-                  f.write(data)
-                #print('\nComplete!')
-                d = {'slug': video_info['slug'], 'videofile': mp4_file}
-                logging.info(video_info['id'], extra = d)
-            if total_size != 0 and wrote != total_size:
-                print("ERROR, something went wrong")  
-        
-        if( 'subtitle_url' in video_info ):
-            subtitle_extension = video_info['subtitle_url'].split(".")[-1:]
-            subtitle_extension = ''.join(subtitle_extension)
-            subtitle_filename = video_info['video_file']+"."+subtitle_extension
-            if not os.path.exists(subtitle_filename):
-                print(f"Writing to: {subtitle_filename}.")
-                with open(subtitle_filename, 'wb') as s:
-                    bit = requests.get(video_info['subtitle_url'])
-                    s.write(bit.content)
-                    print('\nComplete!')
+    with requests_cache.disabled():
+      video_dir = os.path.dirname(video_info['video_file']+".mp4")
+      os.makedirs(video_dir, exist_ok=True)
+      mp4_file = video_info['video_file']+".mp4"
+      download_status = check_for_existing_download(video_info)
+      if download_status == False:
+          if os.path.exists(mp4_file):
+            print("path exists. not downloading.")
+            d = {'slug': video_info['slug'], 'videofile': mp4_file}
+            logging.info(video_info['id'], extra = d)
+          else:
+              print(f"Writing to: {mp4_file}.")
+              bit = requests.get(video_info['mp4'], stream=True)
+              total_size = int(bit.headers.get('content-length', 0)); 
+              block_size = 1024
+              wrote = 0 
+              with open(mp4_file, 'wb') as f:
+                  #bit = requests.get(video_info['mp4'])
+                  for data in tqdm(bit.iter_content(block_size), total=math.ceil(total_size//block_size) , unit='KB', unit_scale=True):
+                    wrote = wrote  + len(data)
+                    f.write(data)
+                  #print('\nComplete!')
+                  d = {'slug': video_info['slug'], 'videofile': mp4_file}
+                  logging.info(video_info['id'], extra = d)
+              if total_size != 0 and wrote != total_size:
+                  print("ERROR, something went wrong")  
+          
+          if( 'subtitle_url' in video_info ):
+              subtitle_extension = video_info['subtitle_url'].split(".")[-1:]
+              subtitle_extension = ''.join(subtitle_extension)
+              subtitle_filename = video_info['video_file']+"."+subtitle_extension
+              if not os.path.exists(subtitle_filename):
+                  print(f"Writing to: {subtitle_filename}.")
+                  with open(subtitle_filename, 'wb') as s:
+                      bit = requests.get(video_info['subtitle_url'])
+                      s.write(bit.content)
+                      print('\nComplete!')
 
 def check_for_existing_download(video_info):
     id = video_info['id']

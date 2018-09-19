@@ -102,3 +102,4 @@ ENV/
 
 *.ts
 .downloads.log
+pbs_cache.sqlite
