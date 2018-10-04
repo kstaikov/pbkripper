@@ -79,10 +79,10 @@ def create_output_file(video_info):
         print(f"Writing to: {mp4_file}.")
         bit = requests.get(video_info['mp4'], stream=True)
         total_size = int(bit.headers.get('content-length', 0));
-        block_size = 1024
+        block_size = 1048576
         wrote = 0
-        with open(mp4_file, 'wb') as f:
-            for data in tqdm(bit.iter_content(block_size), total=math.ceil(total_size/block_size) , unit='KB', unit_scale=True):
+        with open(mp4_file, 'wb') as f, tqdm(bit.iter_content(block_size),total=math.ceil(total_size/block_size), unit='MB') as progress_bar:
+            for data in progress_bar:
                 wrote = wrote  + len(data)
                 f.write(data)
             d = {'slug': video_info['slug'], 'videofile': mp4_file}
