@@ -13,9 +13,6 @@ DOWNLOAD_ROOT = '.'
 DOWNLOAD_SUBTITLES = True
 SUBTITLE_TYPE = 'SRT'
 
-FORMAT = '%(asctime)-15s %(slug)s %(message)s "%(videofile)s"'
-
-
 def get_shows():
     return requests.get('https://pbskids.org/pbsk/video/api/getShows/').json()['items']
 
