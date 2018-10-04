@@ -13,8 +13,3 @@ python pbkripper.py
 ```
 
 Follow the prompts from there.
-
-### Tests
-```
-python tests.py -b
-```
